@@ -1,20 +1,15 @@
 import os
+import glob
 import cPickle as pickle
+from cStringIO import StringIO as sio
 
 import pandas as pd
 import numpy as np
-import cksspec.io
-import ckscool.cuts
-import cksgaia.io
-import cpsutils.io
-import ckscool.calc
 from astropy.io import ascii
-
 import corner
 import numpy as np
 from numpy.random import random, multivariate_normal
 from chainconsumer import ChainConsumer
-from cStringIO import StringIO as sio
 
 DATADIR = os.path.join(os.path.dirname(__file__),'../data/')
 
@@ -55,13 +50,14 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df.to_hdf(cachefn,table,complevel=1,complib='zlib')
         return df
 
-    if table=='coldefs':
-        tablefn = os.path.join(DATADIR,'column-definitions.txt')
+    if table=='kepler-project-mcmc-column-definitions':
+        tablefn = os.path.join(DATADIR,'kepler-project-mcmc-column-definitions.txt')
         colspecs = [(0,1),(3,4)]
         df = pd.read_fwf(
             tablefn, comment='#', widths=[20,100],
             names=['column','description']
         )
+        
 
     elif table.count('chains'):
         _, dr, id_koicand = table.split('-')
@@ -75,20 +71,19 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         elif dr =='dr25':
             fn = 'mcmc_chains/dr25/koi{id_koi:}.n/mcmc.{id_koi:}.n{id_plnt:}.dat.gz'.format(**fmt)
             df = read_kepler_tables(fn,'mcmc-dr25')
-        #df = df.iloc[::10]
-
 
     elif table=='v18':
         sing = read_vaneylen('data/vaneylen18/params_table_final.txt')
-        sing = ckscool.io.add_prefix(sing,'v18_')
+        sing = add_prefix(sing,'v18_')
         sing['v18_sample'] = 's'
 
         mult = read_vaneylen('data/vaneylen15/params_table_multis_final.txt')
-        mult = ckscool.io.add_prefix(mult,'v18_')
+        mult = add_prefix(mult,'v18_')
         mult['v18_sample'] = 'm'
         df = pd.concat([sing,mult])
         
     elif table=='m15':
+        import ckscool.io
         df = ckscool.io.load_table('koi-mullally15')
         namemap = {}
         for k in df.columns:
@@ -96,11 +91,13 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = df.rename(columns=namemap) 
 
     elif table=='t18':
+        import ckscool.io
         df = ckscool.io.load_table('koi-thompson18')
         namemap = {}
         for k in df.columns:
             namemap[k] = k.replace('koi_','t18_')
         df = df.rename(columns=namemap) 
+
     elif table.count('dr')==1:
         files = glob.glob('mcmc_chains/{}/*.n/mcmc*'.format(table))
         id_koicands = get_id_koicands(files, table)
@@ -135,8 +132,6 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         assert False, "table {} not valid table name".format(table)
     return df
 
-import glob
-import ckscool.io
 
 def get_id_koicands(files, dr):
     id_koicands = []
@@ -196,7 +191,6 @@ def get_summary(id_koicand,dr):
     return d
 
 
-
 def read_vaneylen(fn):
     columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Per, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera_upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp"
     columns = columns.split(',')
@@ -208,32 +202,8 @@ def read_vaneylen(fn):
     return df
 
 def read_kepler_tables(fn,mode):
-
-    names = """
-    CHISQ    #
-    REJECTED # Was chain accepted or rejected
-    PJUMP    # Which parameter was changed? 
-    RHO      # Mean stellar density g/cc
-    NL1      # limb-darkening parameters. If NL3=NL4=0, then a quadratic law was adopted, otherwise a non-linear law (Claret & Bloemen 2011) was used.
-    NL2      
-    NL3 
-    NL4 
-    DIL      # fraction of light from additional stars in the aperture that diluted the observed transit. 0 -no dilution is present, 1 - additional source corresponds to 100% of flux. (isn't this different for different apertures???)
-    VOF     # radial velocity zero point (m/s). We did not include radial velocities in our fits
-    ZPT    #  photometric zero point (relative). Detrending aims to have ZPT ~ 0.
-    EP1    # - T0, time of first transit for each planet y in units of BJD-2454900. For a multi-planet fit, there will be an entry for each planet: EP1, EP2, EP3,
-    PE1    # orbital period for each planet y (days).
-    BB1    # impact parameter for each planet y.
-    RD1    # ratio of planet radius and star radius for each planet y
-    EC1    # eccentricity vector 
-    ES1 
-    KR1    #  radial velocity amplitude for each planet y. Doppler beaming is included (m/s)
-    TE1    # - secondary eclipse depth for each planet y (ppm).
-    EL1    #  amplitude of ellipsoidal variations for each planet y (ppm).
-    AL1    #  amplitude of phase-curve variations from albedo for each planet y (ppm).
-    """
-
-    names = pd.read_csv(sio(names),header=None,comment='#',squeeze=True).str.strip().tolist()
+    names = load_table('kepler-project-mcmc-column-definitions')
+    names = names.column.tolist()
     
     if mode=="mcmc-dr25":
         df = pd.read_table(fn,skiprows=1,sep='\s+',names=names,header=None)
