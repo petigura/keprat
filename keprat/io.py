@@ -3,6 +3,7 @@ import glob
 import cPickle as pickle
 from cStringIO import StringIO as sio
 
+import ckscool.io
 import pandas as pd
 import numpy as np
 from astropy.io import ascii
@@ -73,11 +74,11 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
             df = read_kepler_tables(fn,'mcmc-dr25')
 
     elif table=='v18':
-        sing = read_vaneylen('data/vaneylen18/params_table_final.txt')
+        sing = read_vaneylen('data/vaneylen18/params_table_singles_petigura.txt', mode=2)
         sing = add_prefix(sing,'v18_')
         sing['v18_sample'] = 's'
 
-        mult = read_vaneylen('data/vaneylen15/params_table_multis_final.txt')
+        mult = read_vaneylen('data/vaneylen15/params_table_multis_petigura.txt', mode=2)
         mult = add_prefix(mult,'v18_')
         mult['v18_sample'] = 'm'
         df = pd.concat([sing,mult])
@@ -99,6 +100,7 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = df.rename(columns=namemap) 
 
     elif table.count('dr')==1:
+        import ckscool.io
         files = glob.glob('mcmc_chains/{}/*.n/mcmc*'.format(table))
         id_koicands = get_id_koicands(files, table)
         mcmc = pd.DataFrame(dict(id_koicand=id_koicands))
@@ -118,9 +120,9 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = pd.DataFrame(df)
 
     elif table=='all':
-        dr22 = load_table('dr22',cache=1)
-        dr25 = load_table('dr25',cache=1)
-        m15 = load_table('m15',cache=1)
+        dr22 = load_table('dr22',cache=1,cachefn='data/kepler_project_chains.hdf')
+        dr25 = load_table('dr25',cache=1,cachefn='data/kepler_project_chains.hdf')
+        m15 = load_table('m15',cache=1,)
         t18 = load_table('t18',cache=1)
         v18 = load_table('v18',cache=1)
         df = pd.merge(dr22,dr25,on='id_koicand')
@@ -191,8 +193,14 @@ def get_summary(id_koicand,dr):
     return d
 
 
-def read_vaneylen(fn):
-    columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Per, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera_upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp"
+def read_vaneylen(fn, mode=''):
+
+    if mode==1:
+        columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Per, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera_upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp"
+
+    elif mode==2:
+        columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Per, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera-upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp, 34-b, 35-b_low, 36-b_upp, 37-ld1, 38-ld1_low, 39-ld1_upp, 40-ld2, 41-ld2_low, 42-ld2_upp"
+        
     columns = columns.split(',')
     columns = [c.split('-')[1] for c in columns]
     df = pd.read_csv(fn,sep='\t+',names=columns,skiprows=1,index_col=None)
