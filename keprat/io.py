@@ -59,7 +59,6 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
             names=['column','description']
         )
         
-
     elif table.count('chains'):
         _, dr, id_koicand = table.split('-')
         fmt = {}
@@ -112,6 +111,8 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         cks = pd.merge(cks,mcmc)
         cks = cks.sort_values(by='id_koicand').drop_duplicates()
         id_koicands = cks.id_koicand
+        #id_koicands = cks.head(30).id_koicand
+
 
         df = []
         for id_koicand in id_koicands:
@@ -129,11 +130,37 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = pd.merge(df,m15,on='id_koicand')
         df = pd.merge(df,t18,on='id_koicand')
         df = pd.merge(df,v18,on='id_koicand',how='left')
+    
+
+    elif table=='cksgaia-planets':
+        import cksgaia.io
+        df = cksgaia.io.load_table(
+            'cksgaia-planets',cachefn='../CKS-Gaia/load_table_cache.hdf'
+        )
+        v18 = load_table('v18',cachefn='load_table_cache.hdf',cache=1)
+        dr25 = load_table('dr25',cache=1)
+        df = pd.merge(df,v18,on='id_koicand',how='left')
+        df = pd.merge(df,dr25,on='id_koicand',how='left')
+
+        df['dr25_ror_v18_srad'] = df.eval('dr25_RD1_cum * v18_srad * 109')
+        df['dr25_ror_v18_srad_err1'] = df.eval('dr25_ror_v18_srad * sqrt((dr25_RD1_cum_err1/dr25_RD1_cum)**2 + (v18_srad_err1/v18_srad)**2)')
+
+        df['dr25_ror_gdir_srad'] = df.eval('dr25_RD1_cum * gdir_srad * 109')
+        df['dr25_ror_gdir_srad_err1'] = df.eval('dr25_ror_gdir_srad * sqrt((dr25_RD1_cum_err1/dr25_RD1_cum)**2 + (gdir_srad_err1/gdir_srad)**2)')
+
+
+        df['v18_ror_gdir_srad'] = df.eval('v18_ror * gdir_srad * 109')
+        df['v18_ror_gdir_srad_err1'] = df.eval('v18_ror_gdir_srad * sqrt((v18_ror_err1/v18_ror)**2 + (gdir_srad_err1/gdir_srad)**2)')
+        df = df.dropna(subset=['gdir_prad'])
+
+        df['tau0'] = 2.036 * df.koi_period**(1/3.) * df.giso_srho**(-1/3.0)
+        df['tau'] = df.dr25_TAU1_cum
+        df.index = df.id_kic
+        df['multi'] = df.groupby('id_kic').size() > 1
 
     else:
         assert False, "table {} not valid table name".format(table)
     return df
-
 
 def get_id_koicands(files, dr):
     id_koicands = []
@@ -153,31 +180,61 @@ def get_id_koicands(files, dr):
 
     return id_koicands
 
+from astropy import units as u
+from astropy import constants as c
+
+per = 1*u.day
+rhostar = 1*u.g/u.cm**3
+tau_const = (  
+    per**(1/3.) 
+    * rhostar**(-1/3.) 
+    * 3**(1/3.) 
+    * np.pi**(-2/3.) 
+    / c.G**(1/3.)
+)
+tau_const = tau_const.to(u.hour).value 
+
 def get_summary(id_koicand,dr):
     fmt = {}
     fmt['id_koicand'] = id_koicand
 
     if dr=='dr25':
         nburn = int(4e4)
-        df = load_table("chains-dr25-{id_koicand:}".format(**fmt),cache=1)
+        table = "chains-dr25-{id_koicand:}".format(**fmt)
     elif dr=='dr22':
         nburn = int(2e4)
-        df = load_table("chains-dr22-{id_koicand:}".format(**fmt),cache=1)
+        table = "chains-dr22-{id_koicand:}"
 
+    df = load_table(table,cache=1, cachefn='data/kepler_project_chains.hdf')
     df = df.iloc[nburn::10]
     if len(df)==0:
         return {}
-    cols = "RHO ZPT EP1 PE1 BB1 RD1".split()
-    d = {}
+     
+    df['TAU1'] = tau_const * df.eval(
+        '(1 - BB1**2)**(1/2.) * PE1**(1/3.) * RHO**(-1/3.)'
+    )
 
+    fgraz = 1.0 * (df['BB1'] > 1.0).sum() / (df['BB1'] > 1.0).count()
+    print r"{}% chains with b > 1".format(fgraz * 100)
+
+    d = {}
+    
+    d['fgraz'] = fgraz
+    d['id_koicand'] = id_koicand
+
+    if fgraz==1:
+        return d
+    df = df[df['BB1'] < 1]
+    
     statnames = {'cumulative':'cum'}
     for statistics, stat in statnames.iteritems():
+        d3 = {}
+        cols = "RHO ZPT EP1 PE1 BB1 RD1 TAU1".split()
         _cols = ["{}_{}_{}".format(dr,k,stat) for k in cols] 
         c = ChainConsumer()
         c.add_chain(np.array(df[cols]), parameters=_cols)
         c.configure(statistics=statistics)
         d2 = c.analysis.get_summary()
-        d3 = {}
         for k in d2.keys():
             lo, mid, hi = d2[k]
             if lo==None:
@@ -188,24 +245,48 @@ def get_summary(id_koicand,dr):
             d3[k+'_err1'] = hi-mid
             d3[k+'_err2'] = lo-mid
 
+
+
         d = dict(d,**d3)
-    d['id_koicand'] = id_koicand
     return d
 
 
 def read_vaneylen(fn, mode=''):
 
     if mode==1:
-        columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Per, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera_upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp"
+        columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Period, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera_upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp"
 
     elif mode==2:
-        columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Per, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera-upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp, 34-b, 35-b_low, 36-b_upp, 37-ld1, 38-ld1_low, 39-ld1_upp, 40-ld2, 41-ld2_low, 42-ld2_upp"
+        columns = "0-Kepler, 1-koiname, 2-Ecc, 3-Ecc_low, 4-Ecc_upp, 5-Period, 6-U_Period, 7-Rp, 8-U_Rp, 9-Rovera, 10-Rovera_low, 11-Rovera_upp, 12-RpRs, 13-RpRs_low, 14-RpRs_upp, 15-Mstar, 16-Mstar_low, 17-Mstar_upp, 18-Rstar, 19-Rstar_low, 20-Rstar_upp, 21-Rho, 22-Rho_low, 23-Rho_upp, 24-Temperature, 25-Temperature_low, 26-Temperature_upp, 27-Metl, 28-Metl_low, 29-Metl_upp, 30-Kepmag, 31-relrho, 32-relrho_low, 33-relrho_upp, 34-b, 35-b_low, 36-b_upp, 37-ld1, 38-ld1_low, 39-ld1_upp, 40-ld2, 41-ld2_low, 42-ld2_upp"
         
     columns = columns.split(',')
     columns = [c.split('-')[1] for c in columns]
     df = pd.read_csv(fn,sep='\t+',names=columns,skiprows=1,index_col=None)
-    df['Rp_err'] = df.U_Rp - df.Rp
-    df['RpRs_err']  = 0.5 * (df.RpRs_upp - df.RpRs_low )
+
+    for key2 in df.columns:
+        if key2.count('low'):
+            k = key2.split('_')[0]
+            df[k+'_err1'] = df[k+'_upp'] - df[k]
+            df[k+'_err2'] = df[k+'_low'] - df[k]
+            df = df.drop([k+'_upp',k+'_low'],axis=1)
+
+        if key2.count('U'):
+            k = key2.split('_')[1]
+            df[k+'_err1'] = df[key2]
+            df[k+'_err2'] = - df[key2]
+            df = df.drop([key2],axis=1)
+
+    namemap = {
+        'Ecc':'ecc','Period':'period','Rp':'prad','Rovera':'rovera','RpRs':'ror','Mstar':'smass','Rstar':'srad','Rho':'srho',
+        'Temperature':'steff','Metl':'smet','Kepmag':'kepmag','b':'impact'
+    }
+    for c in list(df.columns):
+        for _old,_new in namemap.iteritems():
+            if c==_old or c.count(_old+'_'):
+                new = c.replace(_old,_new)
+                _d = {c:new}
+                df = df.rename(columns=_d)
+
     df = df.rename(columns={'koiname':'id_koicand'})
     return df
 
