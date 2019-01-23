@@ -3,9 +3,7 @@ import glob
 import cPickle as pickle
 from cStringIO import StringIO as sio
 
-import ckscool.io
 import pandas as pd
-import numpy as np
 from astropy.io import ascii
 import corner
 import numpy as np
@@ -121,16 +119,15 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = pd.DataFrame(df)
 
     elif table=='all':
-        dr22 = load_table('dr22',cache=1,cachefn='data/kepler_project_chains.hdf')
-        dr25 = load_table('dr25',cache=1,cachefn='data/kepler_project_chains.hdf')
-        m15 = load_table('m15',cache=1,)
-        t18 = load_table('t18',cache=1)
-        v18 = load_table('v18',cache=1)
-        df = pd.merge(dr22,dr25,on='id_koicand')
-        df = pd.merge(df,m15,on='id_koicand')
-        df = pd.merge(df,t18,on='id_koicand')
-        df = pd.merge(df,v18,on='id_koicand',how='left')
-    
+        dr22 = load_table('dr22', cache=1,cachefn='data/kepler_project_chains.hdf')
+        dr25 = load_table('dr25', cache=1,cachefn='data/kepler_project_chains.hdf')
+        m15 = load_table('m15', cache=1,)
+        t18 = load_table('t18', cache=1)
+        v18 = load_table('v18', cache=1)
+        df = pd.merge(dr22, dr25, on='id_koicand')
+        df = pd.merge(df, m15, on='id_koicand')
+        df = pd.merge(df, t18, on='id_koicand')
+        df = pd.merge(df, v18, on='id_koicand',how='left')
 
     elif table=='cksgaia-planets':
         import cksgaia.io
@@ -147,7 +144,6 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
 
         df['dr25_ror_gdir_srad'] = df.eval('dr25_RD1_cum * gdir_srad * 109')
         df['dr25_ror_gdir_srad_err1'] = df.eval('dr25_ror_gdir_srad * sqrt((dr25_RD1_cum_err1/dr25_RD1_cum)**2 + (gdir_srad_err1/gdir_srad)**2)')
-
 
         df['v18_ror_gdir_srad'] = df.eval('v18_ror * gdir_srad * 109')
         df['v18_ror_gdir_srad_err1'] = df.eval('v18_ror_gdir_srad * sqrt((v18_ror_err1/v18_ror)**2 + (gdir_srad_err1/gdir_srad)**2)')
