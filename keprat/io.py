@@ -57,6 +57,14 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
             names=['column','description']
         )
         
+    if table=='coldefs':
+        tablefn = os.path.join(DATADIR,'column-definitions.txt')
+        colspecs = [(0,1),(3,4)]
+        df = pd.read_fwf(
+            tablefn, comment='#', widths=[24,100],
+            names=['column','description']
+        )
+
     elif table.count('chains'):
         _, dr, id_koicand = table.split('-')
         fmt = {}
@@ -153,6 +161,8 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df['tau'] = df.dr25_TAU1_cum
         df.index = df.id_kic
         df['multi'] = df.groupby('id_kic').size() > 1
+        import pdb;pdb.set_trace()
+        df = order_columns(df)
 
     else:
         assert False, "table {} not valid table name".format(table)
