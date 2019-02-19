@@ -1,0 +1,21 @@
+CHISQ               Chi-squared
+REJECTED            1 - chain was accepted, 0 - not
+PJUMP               Which parameter was changed?
+RHO                 Mean stellar density g/cc
+NL1                 limb-darkening parameters. If NL3=NL4=0, then a quadratic law was adopted, otherwise a non-linear law (Claret & Bloemen 2011) was used.
+NL2      
+NL3 
+NL4 
+DIL                 Fraction of light from additional stars in the aperture that diluted the observed transit. 0 - no dilution is present, 1 - 100% dilution 
+VOF                 Radial velocity zero point (m/s).  Not used in fit
+ZPT                 Photometric zero point. Detrending aims to acheive ZPT of 0.
+EP1                 Time of first transit (BJD-2454900)
+PE1                 Orbital period for each planet (days).
+BB1                 Impact parameter 
+RD1                 Ratio of planet radius and star radius
+EC1                 e cos w 
+ES1                 e sin w
+KR1                 Radial velocity amplitude for each planet y. Doppler beaming is included (m/s)
+TE1                 Secondary eclipse depth for each planet y (ppm).
+EL1                 Amplitude of ellipsoidal variations for each planet y (ppm).
+AL1                 Amplitude of phase-curve variations from albedo for each planet y (ppm).

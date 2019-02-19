@@ -277,3 +277,61 @@ def fig_vaneylen_comparison():
     gcf().savefig('paper/fig_v18-comparison-b.pdf')
 
 
+def plot_compare_ror(cut, yk1, yk2):
+    x = 'v18_impact'
+    y = yk2 + '/' + yk1
+    xerr1 = 'v18_impact_err1'
+    xerr2 = 'v18_impact_err2'
+    _x = cut.eval(x)
+    _y = cut.eval(y)
+    _xerr = [-cut.eval(xerr2),cut.eval(xerr1)]
+    _label ='N = {}, RMS = {:.1f}%'.format(_y.count(),std(_y)*100)
+    errorbar(_x,_y,xerr=_xerr,fmt='o',ms=4,label=_label)
+
+def fig_vanelyen_tau_cuts():
+    df = keprat.io.load_table('cksgaia-planets')
+    yk1 = 'v18_ror'
+    yk2 = 'dr25_RD1_cum'
+
+    def _plot(df):
+        plot_compare_ror(df, yk1,yk2)
+
+    fig, axL = subplots(ncols=2,figsize=(8,3.5),sharey=True)
+    sca(axL[0])
+    title('Multis')
+    cut = df.query('multi==True')
+    _plot(cut)
+    cut = df.query('multi==True and 0.6 < tau/tau0 < 1.1')
+    _plot(cut)
+    legend()
+
+    sca(axL[1])
+    title('Singles')
+    cut = df.query('multi==False')
+    _plot(cut)
+    cut = df.query('multi==False and 0.6 < tau/tau0 < 1.1')
+    _plot(cut)
+    legend()
+
+    setp(axL[0],ylabel='$(R_p/R_\star)$ [this work] / $(R_p/R_\star)$ [V18]')
+    setp(axL,xlabel='$b$ [V18]')
+    setp(axL,ylim=(0.8,1.2),xlim=(0,1))
+    tight_layout()
+
+
+def fig_ror_comparison():
+    def _plot(cut):
+        x = 'v18_impact'
+        y = 'dr25_RD1_cum/v18_ror'
+        xerr1 = 'v18_impact_err1'
+        xerr2 = 'v18_impact_err2'
+        _x = cut.eval(x)
+        _y = cut.eval(y)
+        _xerr = [-cut.eval(xerr2),cut.eval(xerr1)]
+        _label ='N = {}, RMS = {:.1f}%'.format(_y.count(),std(_y)*100)
+        errorbar(_x,_y,xerr=_xerr,fmt='o',ms=4,label=_label)
+
+    df = keprat.io.load_table('cksgaia-planets')
+
+    fig, axL = subplots()
+    sca(axL[0])
