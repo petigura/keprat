@@ -13,7 +13,7 @@ koi_disposition            Exoplanet Archive Disposition [str]
 # Columns from Q16 KOI catalog (Mullally et al. 2015).  
 #		          
 # These are best-fit values, and the uncertainty is derived from some
-# sort of Hessian-lik e analysis. Uncertainties are generally
+# sort of Hessian-like analysis. Uncertainties are generally
 # underestimated.
 #
 koi_period                 Orbital Period [days] 

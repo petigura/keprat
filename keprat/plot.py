@@ -26,18 +26,22 @@ def gaussian(pos, mu, cov):
     return out
 
 class ContourPlotter(object):
-    def __init__(self, df):
-        self.df = df
+    def __init__(self, x, y, yerr):
         self.dlogP = 0.01
         self.dlogRp = 0.01
         self.Pmin = 1
-        self.Pmax = 100
+        self.Pmax = 300
         self.Rpmin = 1
-        self.Rpmax = 8
-        self.Pticks = [0.3,1,3,10,30,100]
+        self.Rpmax = 4
+        self.Pticks = [1,3,10,30,100,300]
         self.Rpticks = [0.5,0.7,1.0,1.4,2.0,2.8,4.0,5.6,8.0,11.3,16.0]
         self.Pticks = np.array(self.Pticks)
         self.Rpticks = np.array(self.Rpticks)
+
+        self.x = x
+        self.y = y
+        self.yerr = yerr
+        self.n = len(self.x)
         
     def compute_density(self):
         logP = arange(log10(self.Pmin),log10(self.Pmax),self.dlogP)
@@ -50,22 +54,22 @@ class ContourPlotter(object):
         }
         ds = xr.Dataset(data,coords=coords)
 
-        n = len(self.df)
         ndim = 2 
         
         # compute midpoints
-        mu = np.zeros((n,ndim))
-        self.x = log10(self.df.koi_period)
-        self.y = log10(self.df.dr25_ror_gdir_srad)
-        
-        mu[:,0] = self.x
-        mu[:,1] = self.y
+        mu = np.zeros((self.n,ndim))
+
+        self.logx = log10(self.x)
+        self.logy = log10(self.y)
+        self.logyerr = log10(1 + self.yerr/self.y) 
+
+        mu[:,0] = self.logx
+        mu[:,1] = self.logy
 
         # compute uncertainties
-        cov = zeros((n,ndim,ndim))
+        cov = zeros((self.n,ndim,ndim))
         sigma1 = log10(1.5)
-        sigma2 = log10(1 + self.df.dr25_ror_gdir_srad_err1/self.df.dr25_ror_gdir_srad) 
-        self.yerr = sigma2
+        sigma2 = self.logyerr
         cov[:,0,0] = sigma1**2
         cov[:,1,1] = sigma2**2
 
@@ -76,22 +80,24 @@ class ContourPlotter(object):
         ds['Z'] = (['logP','logRp'],Z)
         self.ds = ds
 
-    def plot_contour(self):
-        self.ds.Z.plot.contourf(x='logP',cmap=plt.cm.afmhot_r,levels=20)
+    def plot_contour(self,contourfkw={}):
+        temp = self.ds.Z / self.ds.Z.max()
+        im = temp.plot.contourf(x='logP',cmap=plt.cm.afmhot_r,levels=arange(0,1.00001,0.05),add_labels=False,**contourfkw)
         xticks(log10(self.Pticks),self.Pticks)
         yticks(log10(self.Rpticks),self.Rpticks)
         xlabel('Orbital Period (days)')
         ylabel('Planet Size (Earth-radii)')
         xlim(log10(self.Pmin),log10(self.Pmax))
         ylim(log10(self.Rpmin),log10(self.Rpmax))
-        add_anchored('$N_p$ = {}'.format(len(self.df)),2,prop=dict(size='small'))
-        
+        #add_anchored('$N_p$ = {}'.format(self.n),1,prop=dict(size='small'))
+        self.im = im
+
     def plot_integrated(self):
         pass
 
 
     def plot_points(self):
-        errorbar(self.x,self.y,yerr=self.yerr,fmt='.',elinewidth=0.5,ms=4)
+        errorbar(self.logx,self.logy,yerr=self.logyerr,fmt='.',elinewidth=0.5,ms=4)
 
 
 def plot_before_after(mode):
@@ -107,7 +113,7 @@ def plot_before_after(mode):
     both += ' and ~(fur17_rcorr_avg > 1.05)'
     both += ' and gaia2_gflux_ratio < 1.1' 
     fig, axL = subplots(ncols=3,nrows=1,figsize=(8,2.5))
-    
+
     if mode=='compare_mult-all_kepmag-lim_mass-all':
         both += ' and kic_kepmag < 14.2'
         both += ' and 0.7 < giso_smass < 1.4'
@@ -180,8 +186,6 @@ def plot_before_after(mode):
     tight_layout()
     gcf().savefig('paper/fig_{}.pdf'.format(mode))
 
-
-
 def plot_contour(df):
     
     sca(axL[1])
@@ -194,8 +198,6 @@ def plot_contour(df):
     xlabel('log(Rp)')
     ylabel('Density (Integrated)')
 
-
-
 def band():
     band1 = lambda per : 1.9 * per**-0.05
     band2 = lambda per : 2.3 * per**-0.05
@@ -206,8 +208,14 @@ def band():
 
 def add_anchored(*args,**kwargs):
     ax = gca()
+    letter_bbox_props = dict(
+        boxstyle="round,pad=0.,rounding_size=0.2",fc='w',alpha=0.7,
+        ec='none'
+    )
     at = AnchoredText(*args,**kwargs)
     ax.add_artist(at)
+    setp(at.patch,**letter_bbox_props)
+
 
 def fig_vaneylen_comparison():
     ncols = 4

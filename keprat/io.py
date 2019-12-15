@@ -5,10 +5,13 @@ from cStringIO import StringIO as sio
 
 import pandas as pd
 from astropy.io import ascii
-import corner
 import numpy as np
 from numpy.random import random, multivariate_normal
 from chainconsumer import ChainConsumer
+import warnings
+import tables
+import emcee.autocorr
+warnings.simplefilter('ignore', tables.NaturalNameWarning)
 
 DATADIR = os.path.join(os.path.dirname(__file__),'../data/')
 
@@ -31,7 +34,7 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
     """
     if cache==1:
         try:
-            df = pd.read_hdf(cachefn,table)
+            df = pd.read_hdf(cachefn,table, mode='r')
             print "read table {} from {}".format(table,cachefn)
             return df
         except IOError:
@@ -49,14 +52,6 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df.to_hdf(cachefn,table,complevel=1,complib='zlib')
         return df
 
-    if table=='kepler-project-mcmc-column-definitions':
-        tablefn = os.path.join(DATADIR,'kepler-project-mcmc-column-definitions.txt')
-        colspecs = [(0,1),(3,4)]
-        df = pd.read_fwf(
-            tablefn, comment='#', widths=[20,100],
-            names=['column','description']
-        )
-        
     if table=='coldefs':
         tablefn = os.path.join(DATADIR,'column-definitions.txt')
         colspecs = [(0,1),(3,4)]
@@ -65,17 +60,28 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
             names=['column','description']
         )
 
+    elif table=='kepler-project-mcmc-column-definitions':
+        tablefn = os.path.join(DATADIR,'kepler-project-mcmc-column-definitions.txt')
+        colspecs = [(0,1),(3,4)]
+        df = pd.read_fwf(
+            tablefn, comment='#', widths=[20,100],
+            names=['column','description']
+        )
+        
     elif table.count('chains'):
         _, dr, id_koicand = table.split('-')
         fmt = {}
         fmt['id_koicand'] = id_koicand
         fmt['id_koi'] = int(id_koicand[1:6])
         fmt['id_plnt'] = int(id_koicand[8:10])
+
         if dr == 'dr22':
-            fn = 'mcmc_chains/dr22/koi{id_koi:}.n/mcmc.{id_koi:}.n{id_plnt:}.dat'.format(**fmt)
+            fn = 'koi{id_koi:}.n/mcmc.{id_koi:}.n{id_plnt:}.dat'.format(**fmt)
+            fn = os.path.join(DATADIR,'mcmc_chains/dr22/',fn)
             df = read_kepler_tables(fn,'mcmc-dr22')
         elif dr =='dr25':
-            fn = 'mcmc_chains/dr25/koi{id_koi:}.n/mcmc.{id_koi:}.n{id_plnt:}.dat.gz'.format(**fmt)
+            fn = 'koi{id_koi:}.n/mcmc.{id_koi:}.n{id_plnt:}.dat.gz'.format(**fmt)
+            fn = os.path.join(DATADIR,'mcmc_chains/dr25/',fn)
             df = read_kepler_tables(fn,'mcmc-dr25')
 
     elif table=='v18':
@@ -95,6 +101,42 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         for k in df.columns:
             namemap[k] = k.replace('koi_','m15_')
         df = df.rename(columns=namemap) 
+
+    elif table=='f18':
+        readmefn = 'data/fulton18/ReadMe'
+        fn = 'data/fulton18/table2.dat'
+        t2 = ascii.read(fn,readme=readmefn)
+        t2 = t2.to_pandas()
+        t2['id_koi'] = t2.KOI.str.slice(start=1).astype(int)
+
+        fn = 'data/fulton18/table3.dat'
+        t3 = ascii.read(fn,readme=readmefn)
+        t3 = t3.to_pandas()
+        fn = 'data/fulton18/table4.dat'
+        t4 = ascii.read(fn,readme=readmefn)
+        t4 = t4.to_pandas()
+        df = pd.merge(t4[['KOI']],t3)
+        df['id_koi'] = df.KOI.str.slice(start=1,stop=6).astype(int)
+        namemap = {
+            'KOI':'id_koicand'
+        }
+        df = df.rename(columns=namemap)
+        df = pd.merge(t2,df,on='id_koi')
+        namemap = {
+            'id_koicand':'id_koicand', 'id_koi':'id_koi',
+            'Per':'period', 
+            'Rp':'prad', 'E_Rp':'prad_err',
+            'R':'srad','E_R':'srad_err',
+            'Rp/R*':'ror', 'E_Rp/R*':'ror_err1', 'e_Rp/R*':'ror_err2',
+            'rhoiso':'srho', 'E_rhoiso':'srho_err1', 'e_rhoiso':'srho_err2',
+            'Miso':'smass', 'E_Miso':'smass_err1', 'e_Miso':'smass_err2'
+        }
+        df = df.rename(columns=namemap)[namemap.values()]
+        df['ror_err2'] *= -1
+        df['srho_err2'] *= -1
+        df['smass_err2'] *= -1
+#        df = df.rename(columns=namemap)
+        df = add_prefix(df,'f18_')
 
     elif table=='t18':
         import ckscool.io
@@ -119,7 +161,6 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         id_koicands = cks.id_koicand
         #id_koicands = cks.head(30).id_koicand
 
-
         df = []
         for id_koicand in id_koicands:
             d = get_summary(id_koicand, table)
@@ -127,42 +168,38 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = pd.DataFrame(df)
 
     elif table=='all':
-        dr22 = load_table('dr22', cache=1,cachefn='data/kepler_project_chains.hdf')
-        dr25 = load_table('dr25', cache=1,cachefn='data/kepler_project_chains.hdf')
-        m15 = load_table('m15', cache=1,)
+        dr22 = load_table('dr22', cache=1, cachefn='data/kepler_project_chains.hdf')
+        dr25 = load_table('dr25', cache=1, cachefn='data/kepler_project_chains.hdf')
+        m15 = load_table('m15')
+        f18 = load_table('f18')
         t18 = load_table('t18', cache=1)
         v18 = load_table('v18', cache=1)
-        df = pd.merge(dr22, dr25, on='id_koicand')
-        df = pd.merge(df, m15, on='id_koicand')
-        df = pd.merge(df, t18, on='id_koicand')
+        df = pd.merge(dr22, dr25, on='id_koicand',how='outer')
+        df = pd.merge(df, m15, on='id_koicand',how='left')
+        df = pd.merge(df, t18, on='id_koicand',how='left')
         df = pd.merge(df, v18, on='id_koicand',how='left')
+        df = pd.merge(df, f18, on='id_koicand',how='left')
 
     elif table=='cksgaia-planets':
-        import cksgaia.io
-        df = cksgaia.io.load_table(
-            'cksgaia-planets',cachefn='../CKS-Gaia/load_table_cache.hdf'
-        )
+        #import cksgaia.io
+        #df = cksgaia.io.load_table(
+        #    'cksgaia-planets',cachefn='../CKS-Gaia/load_table_cache.hdf'
+        #)
+        f18 = load_table('f18')
         v18 = load_table('v18',cachefn='load_table_cache.hdf',cache=1)
         dr25 = load_table('dr25',cache=1)
-        df = pd.merge(df,v18,on='id_koicand',how='left')
-        df = pd.merge(df,dr25,on='id_koicand',how='left')
+        m15 = load_table('m15')
 
-        df['dr25_ror_v18_srad'] = df.eval('dr25_RD1_cum * v18_srad * 109')
-        df['dr25_ror_v18_srad_err1'] = df.eval('dr25_ror_v18_srad * sqrt((dr25_RD1_cum_err1/dr25_RD1_cum)**2 + (v18_srad_err1/v18_srad)**2)')
+        # attach id_kic
+        df = pd.merge(f18, m15[['id_koicand','id_kic']])
+        df = pd.merge(df, v18,on='id_koicand',how='left')
+        df = pd.merge(df, dr25,on='id_koicand',how='left')
 
-        df['dr25_ror_gdir_srad'] = df.eval('dr25_RD1_cum * gdir_srad * 109')
-        df['dr25_ror_gdir_srad_err1'] = df.eval('dr25_ror_gdir_srad * sqrt((dr25_RD1_cum_err1/dr25_RD1_cum)**2 + (gdir_srad_err1/gdir_srad)**2)')
-
-        df['v18_ror_gdir_srad'] = df.eval('v18_ror * gdir_srad * 109')
-        df['v18_ror_gdir_srad_err1'] = df.eval('v18_ror_gdir_srad * sqrt((v18_ror_err1/v18_ror)**2 + (gdir_srad_err1/gdir_srad)**2)')
-        df = df.dropna(subset=['gdir_prad'])
-
-        df['tau0'] = 2.036 * df.koi_period**(1/3.) * df.giso_srho**(-1/3.0)
-        df['tau'] = df.dr25_TAU1_cum
-        df.index = df.id_kic
-        df['multi'] = df.groupby('id_kic').size() > 1
-        import pdb;pdb.set_trace()
-        df = order_columns(df)
+        df['f18_tau0'] = 2.036 * df.f18_period**(1/3.) * df.f18_srho**(-1/3.0)
+        df['dr25_tau'] = df.dr25_TAU1_cum
+        df.index = df.id_koi
+        df['multi'] = df.groupby('id_koi').size() > 1
+        #df = order_columns(df)
 
     else:
         assert False, "table {} not valid table name".format(table)
@@ -200,7 +237,7 @@ tau_const = (
 )
 tau_const = tau_const.to(u.hour).value 
 
-def get_summary(id_koicand,dr):
+def get_summary(id_koicand, dr, cachefn='data/kepler_project_chains.hdf'):
     fmt = {}
     fmt['id_koicand'] = id_koicand
 
@@ -211,8 +248,9 @@ def get_summary(id_koicand,dr):
         nburn = int(2e4)
         table = "chains-dr22-{id_koicand:}"
 
-    df = load_table(table,cache=1, cachefn='data/kepler_project_chains.hdf')
+    df = load_table(table,cache=1,cachefn=cachefn)
     df = df.iloc[nburn::10]
+
     if len(df)==0:
         return {}
      
@@ -221,17 +259,21 @@ def get_summary(id_koicand,dr):
     )
 
     fgraz = 1.0 * (df['BB1'] > 1.0).sum() / (df['BB1'] > 1.0).count()
-    print r"{}% chains with b > 1".format(fgraz * 100)
+    #print r"{}% chains with b > 1".format(fgraz * 100)
 
     d = {}
     
     d['fgraz'] = fgraz
     d['id_koicand'] = id_koicand
 
+    tau = emcee.autocorr.integrated_time(np.array(df.BB1),fast=True,c=1)
+    d['autocorr_over_length'] = tau / len(df)
+
+
     if fgraz==1:
         return d
+
     df = df[df['BB1'] < 1]
-    
     statnames = {'cumulative':'cum'}
     for statistics, stat in statnames.iteritems():
         d3 = {}
@@ -251,9 +293,8 @@ def get_summary(id_koicand,dr):
             d3[k+'_err1'] = hi-mid
             d3[k+'_err2'] = lo-mid
 
-
-
         d = dict(d,**d3)
+
     return d
 
 
@@ -278,8 +319,8 @@ def read_vaneylen(fn, mode=''):
 
         if key2.count('U'):
             k = key2.split('_')[1]
-            df[k+'_err1'] = df[key2]
-            df[k+'_err2'] = - df[key2]
+            df[k+'_err1'] = df[key2] - df[k]
+            df[k+'_err2'] = -df[k+'_err1']
             df = df.drop([key2],axis=1)
 
     namemap = {
@@ -294,6 +335,8 @@ def read_vaneylen(fn, mode=''):
                 df = df.rename(columns=_d)
 
     df = df.rename(columns={'koiname':'id_koicand'})
+    df['id_koi'] = df.id_koicand.str.slice(start=1,stop=6).astype(int)
+
     return df
 
 def read_kepler_tables(fn,mode):
@@ -301,7 +344,11 @@ def read_kepler_tables(fn,mode):
     names = names.column.tolist()
     
     if mode=="mcmc-dr25":
-        df = pd.read_table(fn,skiprows=1,sep='\s+',names=names,header=None)
+        df = pd.read_csv(fn,sep='\s+',names=names,header=None,engine='c',low_memory=True, memory_map=True,skiprows= 1)
+#        I tried various ways of reading in the chains faster but none worked
+#        df = pd.read_csv(fn,sep='\s',names=names,header=None,engine='c',low_memory=True, memory_map=True,skiprows= 1)
+#        df = pd.read_fwf(fn,names=[names[0]],header=None,skiprows=1,colspecs=[(2, 16),],delimiter=' ')
+#        df = pd.read_fwf(fn,header=None,skiprows=1,delimiter='\t')
     if mode=="mcmc-dr22":
         df = pd.read_table(fn,skiprows=1,sep='\s+',names=names,header=None)
 
