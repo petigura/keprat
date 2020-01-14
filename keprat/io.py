@@ -85,11 +85,12 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
             df = read_kepler_tables(fn,'mcmc-dr25')
 
     elif table=='v18':
-        sing = read_vaneylen('data/vaneylen18/params_table_singles_petigura.txt', mode=2)
+        fn = os.path.join(DATADIR,'vaneylen18/params_table_singles_petigura.txt')
+        sing = read_vaneylen(fn, mode=2)
         sing = add_prefix(sing,'v18_')
         sing['v18_sample'] = 's'
-
-        mult = read_vaneylen('data/vaneylen15/params_table_multis_petigura.txt', mode=2)
+        fn = os.path.join(DATADIR,'vaneylen15/params_table_multis_petigura.txt')
+        mult = read_vaneylen(fn , mode=2)
         mult = add_prefix(mult,'v18_')
         mult['v18_sample'] = 'm'
         df = pd.concat([sing,mult])
@@ -103,16 +104,18 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = df.rename(columns=namemap) 
 
     elif table=='f18':
-        readmefn = 'data/fulton18/ReadMe'
-        fn = 'data/fulton18/table2.dat'
+        
+        readmefn = os.path.join(DATADIR,'fulton18/ReadMe')
+        fn = os.path.join(DATADIR,'fulton18/table2.dat')
         t2 = ascii.read(fn,readme=readmefn)
         t2 = t2.to_pandas()
         t2['id_koi'] = t2.KOI.str.slice(start=1).astype(int)
 
-        fn = 'data/fulton18/table3.dat'
+        fn = os.path.join(DATADIR,'fulton18/table3.dat')
         t3 = ascii.read(fn,readme=readmefn)
         t3 = t3.to_pandas()
-        fn = 'data/fulton18/table4.dat'
+        
+        fn = os.path.join(DATADIR,'fulton18/table4.dat')
         t4 = ascii.read(fn,readme=readmefn)
         t4 = t4.to_pandas()
         df = pd.merge(t4[['KOI']],t3)
@@ -168,8 +171,8 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
         df = pd.DataFrame(df)
 
     elif table=='all':
-        dr22 = load_table('dr22', cache=1, cachefn='data/kepler_project_chains.hdf')
-        dr25 = load_table('dr25', cache=1, cachefn='data/kepler_project_chains.hdf')
+        dr22 = load_table('dr22', cache=1, cachefn=os.path.join(DATADIR,'kepler_project_chains.hdf'))
+        dr25 = load_table('dr25', cache=1, cachefn=os.path.join(DATADIR,'kepler_project_chains.hdf'))
         m15 = load_table('m15')
         f18 = load_table('f18')
         t18 = load_table('t18', cache=1)
@@ -197,8 +200,8 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
 
         df['f18_tau0'] = 2.036 * df.f18_period**(1/3.) * df.f18_srho**(-1/3.0)
         df['dr25_tau'] = df.dr25_TAU1_cum
-        df.index = df.id_koi
         df['multi'] = df.groupby('id_koi').size() > 1
+        df.index = df.id_koi
         #df = order_columns(df)
 
     else:
@@ -236,8 +239,9 @@ tau_const = (
     / c.G**(1/3.)
 )
 tau_const = tau_const.to(u.hour).value 
+cachefn=os.path.join(DATADIR,'kepler_project_chains.hdf')
 
-def get_summary(id_koicand, dr, cachefn='data/kepler_project_chains.hdf'):
+def get_summary(id_koicand, dr, cachefn=cachefn):
     fmt = {}
     fmt['id_koicand'] = id_koicand
 
