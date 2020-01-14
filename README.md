@@ -1,5 +1,10 @@
 ## Kepler Radius Ratio
 
+### Conda environment
+
+Work in petigura's base conda enviroment (dangerous b/c could update it)
+
+
 ### Reading in Kepler project chains
 
 ```
