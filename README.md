@@ -2,7 +2,7 @@
 
 ### Conda environment
 
-Work in petigura's base conda enviroment (dangerous b/c could update it)
+Work in petigura's base conda enviroment (dangerous b/c should update it)
 
 
 ### Reading in Kepler project chains
@@ -25,3 +25,8 @@ Create `data/cksgaia-planets.csv` for Vincent to read in with
 ```
 bin/run_keprat.py cksgaia-planets
 ```
+
+## To generate plots for papers run the numberered ipython notebooks
+
+
+

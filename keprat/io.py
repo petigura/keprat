@@ -129,6 +129,7 @@ def load_table(table, cache=0, cachefn='load_table_cache.hdf', verbose=False):
             'id_koicand':'id_koicand', 'id_koi':'id_koi',
             'Per':'period', 
             'Rp':'prad', 'E_Rp':'prad_err',
+            'Teff':'steff','E_Teff':'steff_err1','e_Teff':'steff_err2',
             'R':'srad','E_R':'srad_err',
             'Rp/R*':'ror', 'E_Rp/R*':'ror_err1', 'e_Rp/R*':'ror_err2',
             'rhoiso':'srho', 'E_rhoiso':'srho_err1', 'e_rhoiso':'srho_err2',
